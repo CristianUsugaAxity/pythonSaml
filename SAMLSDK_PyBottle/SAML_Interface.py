@@ -9,12 +9,21 @@ from base64 import b64decode
 
 from datetime import datetime
 
-from lxml import etree
+from lxml import etree 
+
 from lxml.builder import ElementMaker
+import xmltodict
+import json
+import requests
+import random
+from datetime import datetime
+
+
+
 
 class SAML_Request:
     def GetSAMLRequest(strACSUrl = None, strIssuer = None):
-
+        print("hola saml request")
         xSAMLPNode = ElementMaker(namespace='urn:oasis:names:tc:SAML:2.0:protocol', nsmap=dict(saml2p='urn:oasis:names:tc:SAML:2.0:protocol'))
         xSAMLNode = ElementMaker(namespace='urn:oasis:names:tc:SAML:2.0:assertion', nsmap=dict(saml2='urn:oasis:names:tc:SAML:2.0:assertion'))
 
@@ -42,22 +51,63 @@ class SAML_Request:
       
 class SAML_Response:
     def ParseSAMLResponse(strACSUrl, strEncodedSAMLResponse):
-        message_list = []
         cert = open("static/certificates/SignCertFromIdaptive.cer").read()
         strDecodedSAMLResponse = b64decode(strEncodedSAMLResponse)
+        XMLVerifier().verify(strDecodedSAMLResponse, x509_cert=cert)
+            
+       
+        #print(json.loads(stringroot)) 
         try:
             XMLVerifier().verify(strDecodedSAMLResponse, x509_cert=cert)
-   
+            print("entre al metodo post")
             root = etree.fromstring(b64decode(strEncodedSAMLResponse))
+            byteroot=etree.tostring(root)
+            stringroot=byteroot.decode("utf-8") 
+            xmlresponsedirect=xmltodict.parse(stringroot)
+            datadumps=json.dumps(xmlresponsedirect)
+            datajson=json.loads(datadumps)
+            data=datajson['saml2p:Response']['Assertion']['AttributeStatement']['Attribute']
+            dataUser=list()
+            now = datetime.now()
+            hour=now.strftime('%H:%M:%S')
+            datetoday=datetime.today().strftime('%Y-%m-%d')
+            numeros=list()
+            for i in range(6):
+              numeros.append(str(random.randrange(5, 100)))
+     
+            token=numeros[0]+numeros[1]+numeros[2]+numeros[3]+numeros[4]+numeros[5]+str(now).replace(" ","").replace(".","").replace(("-"), "").replace(":", "")     
             
-            strNameIdNode = root.xpath('//saml2p:Response/xmlns:Assertion/xmlns:Subject/xmlns:NameID', namespaces={'saml2p': 'urn:oasis:names:tc:SAML:2.0:protocol', 'xmlns': 'urn:oasis:names:tc:SAML:2.0:assertion'})
-
-            strNameId = etree.tostring(strNameIdNode[0], method="text")
-            
-            message_list.append(True)
-            message_list.append(str(strNameId)[1:])
-        except:
-             message_list.append(False)
+            for d in data:
+             dataUser.append({
+                       "type":d["@Name"],
+                       "value":d["AttributeValue"],
+                       
+                    })
+            dataUser.append(
+                
+                {"type": "token",
+                  "value":token 
+                  }
+            )
+            dataUser.append(
+                
+                {"type": "fecha",
+                  "value":datetoday 
+                  }
+            ) 
              
-        return message_list
-
+            dataUser.append(
+                
+                {"type": "hora",
+                  "value":hour 
+                  }
+            ) 
+            
+            headersEnvio = {'Content-Type': 'application/json', 'Accept':'application/json'}    
+            rest=requests.post("https://script.google.com/macros/s/AKfycbxj59wtJBvZF9qKqDAd392GAiiNVYMeF8LaFDxGIOPT--VVcc1wJiZDLKXgEyxh4xQ/exec", json=dataUser, headers=headersEnvio)
+            print("respuesta",rest.text)
+            print("token", token)
+        except:
+             dataUser.append(False)
+             
+        return token
